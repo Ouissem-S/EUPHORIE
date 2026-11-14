@@ -1,0 +1,391 @@
+:root {
+    --stage: #000000;
+    --orange: #ff7a1a;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+    margin: 0;
+    height: 100%;
+    background: #000;
+    color: #fff;
+    font-family: system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    overflow: hidden;
+}
+
+/* ---------- landing ---------- */
+.landing {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+
+.landing h1 {
+    letter-spacing: 0.3em;
+    font-weight: 800;
+    margin: 0;
+}
+
+.landing a {
+    color: var(--orange);
+}
+
+/* ---------- TV layout ---------- */
+.tv {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    background: #000;
+}
+
+/* Side glow bars: colour set every frame from the cue sheet */
+.sidebar {
+    width: 2.5vw;
+    height: 100%;
+    background: var(--stage);
+    box-shadow: 0 0 80px 30px var(--stage);
+    position: relative;
+    z-index: 2;
+}
+
+.tv-center {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+/* Video crop: player is 3x taller than the frame, so YouTube's title bar and controls fall outside */
+.video-frame {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    max-height: 100vh;
+    overflow: hidden;
+}
+
+.video-frame iframe {
+    position: absolute;
+    left: 0;
+    top: -100%;
+    width: 100%;
+    height: 300%;
+    border: 0;
+    pointer-events: none;
+}
+
+/* ---------- pre-show + countdown ---------- */
+.preshow {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    text-align: center;
+}
+
+.preshow h1 {
+    margin: 0;
+    font-size: clamp(48px, 8vw, 120px);
+    font-weight: 800;
+    letter-spacing: 0.3em;
+}
+
+.lead {
+    font-size: clamp(18px, 2vw, 28px);
+    margin: 0;
+}
+
+.muted {
+    color: #9a9a9a;
+    margin: 0;
+}
+
+.small {
+    font-size: 14px;
+}
+
+.qr {
+    width: 220px;
+    height: 220px;
+    padding: 12px;
+    border: 2px solid var(--orange);
+    border-radius: 12px;
+    box-shadow: 0 0 40px rgba(255, 122, 26, 0.35);
+}
+
+.countdown {
+    font-size: clamp(120px, 22vw, 320px);
+    font-weight: 800;
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---------- HUD ---------- */
+.hud {
+    position: absolute;
+    top: 16px;
+    left: 24px;
+    right: 24px;
+    z-index: 3;
+    display: flex;
+    justify-content: space-between;
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.75);
+    pointer-events: none;
+}
+
+.video-missing {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--orange);
+}
+
+/* ---------- pre-show states ---------- */
+.doors-left {
+    font-size: clamp(56px, 9vw, 140px);
+    font-weight: 800;
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.preshow.breathing h1 {
+    animation: breathe 4s ease-in-out infinite;
+}
+
+@keyframes breathe {
+
+    0%,
+    100% {
+        opacity: 0.55;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+/* ---------- buttons ---------- */
+.btn {
+    background: transparent;
+    color: #fff;
+    border: 1.5px solid rgba(255, 255, 255, 0.4);
+    border-radius: 12px;
+    padding: 12px 18px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn.big {
+    font-size: 22px;
+    padding: 20px;
+    width: 100%;
+}
+
+.btn.approve {
+    background: var(--orange);
+    border-color: var(--orange);
+    color: #000;
+}
+
+.btn.danger {
+    border-color: #b0122b;
+    color: #ff6b81;
+    width: 100%;
+}
+
+/* ---------- control page ---------- */
+.control {
+    height: 100%;
+    overflow-y: auto;
+    padding: 24px 20px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    max-width: 480px;
+    margin: 0 auto;
+}
+
+.control h1 {
+    margin: 0;
+    letter-spacing: 0.2em;
+    font-size: 22px;
+}
+
+.control.center {
+    align-items: center;
+    justify-content: center;
+}
+
+.control-card {
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.control-status {
+    font-size: 20px;
+    font-weight: 700;
+    margin: 0;
+    color: var(--orange);
+}
+
+.control-label {
+    margin: 0;
+    font-weight: 600;
+}
+
+.control-row {
+    display: flex;
+    gap: 8px;
+}
+
+.control-row .btn {
+    flex: 1;
+}
+
+.control input[type="time"] {
+    flex: 1;
+    background: #111;
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 12px;
+    padding: 10px;
+    font-size: 18px;
+}
+
+/* ---------- band-style intro look ---------- */
+.preshow {
+    background: radial-gradient(ellipse at center, #140603 0%, #000 75%);
+}
+
+/* Wavy orange border: blurred thick frame, bent by the SVG noise filter */
+.glow-frame {
+    position: absolute;
+    inset: 0vw;
+    pointer-events: none;
+    border-radius: 0;
+    /* Own compositor layer: the filter is painted once, then only transformed/faded. */
+    will-change: transform, opacity;
+}
+
+.glow-frame.outer {
+    border: 3.5vw solid #ff4d0d;
+    filter: url(#glow-wave) blur(18px);
+    opacity: 0.85;
+    animation: glow-breathe 7s ease-in-out infinite, glow-wave 25s ease-in-out infinite;
+}
+
+.glow-frame.inner {
+    border: 0.6vw solid #ff9a4d;
+    filter: url(#glow-wave) blur(5px);
+    opacity: 0.9;
+    animation: glow-wave 15s ease-in-out infinite reverse;
+}
+
+@keyframes glow-breathe {
+
+    0%,
+    100% {
+        opacity: 0.7;
+    }
+
+    50% {
+        opacity: 1;
+    }
+}
+
+/* Slow drift so the bent edges appear to move (compositor-only, no repaint). */
+@keyframes glow-wave {
+
+    0%,
+    100% {
+        transform: scale(1) translate(0, 0);
+    }
+
+    50% {
+        transform: scale(1.02, 1.015) translate(-0.4%, 0.3%);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .glow-frame {
+        animation: none !important;
+    }
+}
+
+/* Plain white text, like "I'm Iris." */
+.intro-text {
+    margin: 0;
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-weight: 500;
+    font-size: clamp(20px, 2.4vw, 38px);
+    color: #fff;
+    text-shadow: 0 0 14px rgba(255, 255, 255, 0.35);
+}
+
+.fade-line {
+    animation: fade-line 6s ease-in-out both;
+}
+
+@keyframes fade-line {
+    0% {
+        opacity: 0;
+    }
+
+    15%,
+    85% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+    }
+}
+
+/* Title and countdown in the same simple style */
+.preshow h1 {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-weight: 500;
+    letter-spacing: 0.25em;
+    font-size: clamp(22px, 2.6vw, 40px);
+    text-shadow: 0 0 14px rgba(255, 255, 255, 0.35);
+}
+
+.countdown,
+.doors-left {
+    font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-weight: 500;
+    text-shadow: 0 0 24px rgba(255, 255, 255, 0.4);
+}
+
+.qr {
+    border-color: rgba(255, 154, 77, 0.6);
+    box-shadow: none;
+}
+
+.preshow> :not(.glow-frame):not(svg) {
+    position: relative;
+    z-index: 1;
+}

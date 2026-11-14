@@ -1,0 +1,36 @@
+<!doctype html>
+<html>
+  <head>
+    <style>
+      html, body { margin: 0; height: 100%; background: #000; }
+      /* Visible frame: full width, 16:9, anything outside is cut off */
+      .frame {
+        position: relative;
+        width: 100vw;
+        aspect-ratio: 16 / 9;
+        max-height: 100vh;
+        margin: auto;
+        overflow: hidden;
+      }
+      /* Player 3x taller than the frame, shifted up: title bar and controls fall outside */
+      .frame iframe {
+        position: absolute;
+        left: 0;
+        top: -100%;
+        width: 100%;
+        height: 300%;
+        border: 0;
+        pointer-events: none;   /* no hover = no YouTube controls popping up */
+      }
+    </style>
+  </head>
+  <body>
+    <div class="frame">
+      <iframe
+        src="https://www.youtube.com/embed/Dve5nj6dlys?controls=0&rel=0&playsinline=1&iv_load_policy=3&disablekb=1&fs=0&autoplay=1&mute=1"
+        referrerpolicy="strict-origin-when-cross-origin"
+        allow="autoplay; encrypted-media">
+      </iframe>
+    </div>
+  </body>
+</html>
