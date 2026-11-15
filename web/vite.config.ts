@@ -30,7 +30,10 @@ export default defineConfig({
     __LAN_IP__: JSON.stringify(lanIp()),
   },
   server: {
-    host: true, // listen on the LAN too, not just localhost
+    host: true, // listen on the LAN too, not just localhost (the QR points phones at the LAN IP)
+    port: 5173,
+    strictPort: true,
+    allowedHosts: [".trycloudflare.com"],
     proxy: {
       "/ws": { target: "ws://localhost:8000", ws: true },
       "/api": { target: "http://localhost:8000" },

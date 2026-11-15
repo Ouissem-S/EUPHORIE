@@ -6,6 +6,15 @@ export interface Schedule {
     starts_at: number | null; // server ms
     approved: boolean;
     go_at: number | null; // server ms
+    skipped: boolean; // the server has jumped from the end of song 1 to the finale
+    skip: SkipConfig | null; // from server/app/show_config.py (the only copy)
+}
+
+/** Video seconds: the jump at the end of song 1, and where the show's video starts. */
+export interface SkipConfig {
+    from: number;
+    to: number;
+    show_start: number;
 }
 
 const FINAL_COUNTDOWN_MS = 10_000;
@@ -19,7 +28,7 @@ function stageFor(s: Schedule, now: number): Stage {
 
 /** Tracks the server schedule and works out the stage on the synced clock. */
 export function useSchedule(live: Live, onStageChange: (prev: Stage, next: Stage) => void) {
-    const [schedule, setSchedule] = useState<Schedule>({ starts_at: null, approved: false, go_at: null });
+    const [schedule, setSchedule] = useState<Schedule>({ starts_at: null, approved: false, go_at: null, skipped: false, skip: null });
     const [stage, setStage] = useState<Stage>("holding");
     const [now, setNow] = useState(0);
     const stageRef = useRef<Stage>("holding");
@@ -36,7 +45,13 @@ export function useSchedule(live: Live, onStageChange: (prev: Stage, next: Stage
         const off = live.on((m: Msg) => {
             if (m.type === "schedule") {
                 received.current = true;
-                setSchedule({ starts_at: m.starts_at, approved: m.approved, go_at: m.go_at });
+                setSchedule({
+                    starts_at: m.starts_at,
+                    approved: m.approved,
+                    go_at: m.go_at,
+                    skipped: Boolean(m.skipped),
+                    skip: m.skip ?? null,
+                });
             }
         });
         return () => void off();

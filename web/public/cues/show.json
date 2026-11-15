@@ -24,6 +24,6 @@
   { "t": 81.8, "text": "to see your beautiful faces." },
   { "t": 85.0, "text": "Please make some noise for them as they come to the stage." },
   { "t": 92.8, "text": "Ladies & Gentlemen," },
-  { "t": 98.0, "scene": "reveal" },
-  { "t": 103,  "scene": "show", "corners": false, "colour": "#1f4fd6", "effect": "fade", "dur": 1.5, "crowd": "roar" }
+  { "t": 97.68, "scene": "reveal" },
+  { "t": 106.0,  "scene": "show", "corners": false, "colour": "#1f4fd6", "effect": "fade", "dur": 1.5, "crowd": "roar" }
 ]

@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CUES_URL, SEGMENTS, wsUrl } from "../config";
+import { CUES_URL, SEGMENTS, TICKET_T, wsUrl } from "../config";
 import { Live, type Msg } from "../lib/live";
 import { clearSession, loadSession, saveJoined } from "../lib/phoneSession";
 import { closeMessage } from "../lib/errors";
-import type { Seat } from "../lib/format";
+import { fmtSeat, type Seat } from "../lib/format";
 import { NO_TICKETS, phaseFor, ticketsFrom, type HomeTickets } from "../lib/phase";
 import { useSchedule } from "../hooks/useSchedule";
 import { useFirstTap } from "../hooks/useFirstTap";
@@ -11,11 +11,14 @@ import { useVideoClock } from "../hooks/useVideoClock";
 import { beatFollower } from "../lib/beatPulse";
 import { useMotionReactions } from "../hooks/useMotionReactions";
 import { requestMotionPermission } from "../lib/motion";
+import MotionPanel from "../components/MotionPanel";
 import { unlockCrowdAudio } from "../lib/crowdAudio";
 import { cueCounts, loadCues, stateAt, type Cue, type Scene } from "../lib/cues";
 import { typingGlow } from "../lib/typingGlow";
+import { enableTorch, TORCH_POSSIBLE } from "../lib/torch";
 import GlowFrame from "../components/GlowFrame";
 import Reveal from "../components/Reveal";
+import TicketHold from "../components/TicketHold";
 import Preshow from "../components/Preshow";
 import Typewriter from "../components/Typewriter";
 
@@ -23,6 +26,13 @@ const WAVE = 40; // gentler glow waves on the small screen
 const LETTERS_PER_S = 28; // intro lines type at this speed, on the video's clock
 const REVEAL_SETTLED = 1.2; // s into the reveal: logo is on, only the CSS pulse moves after this
 const DEBUG = new URLSearchParams(location.search).get("debug") === "1";
+const WAVE_ON = new URLSearchParams(location.search).get("wave") !== "0"; // ?wave=0: flashes all at once
+const WAVE_STEP = 0.09; // s per seat bit: bit 0 flashes first, bit 7 last
+const BIT_SHOW_MS = 3000; // waiting room: the seat bit, big, this long after joining
+// Dev: /phone?home=ABCD&test=1 follows a /tv?test=1 TV into the show (no schedule needed).
+const TEST = new URLSearchParams(location.search).get("test") === "1";
+// Dev: /phone?preview=ticket: just the end of the show, "hold to keep your ticket" (no TV, no join).
+const PREVIEW = new URLSearchParams(location.search).get("preview");
 
 /**
  * Every phone state in the waiting-room look: glow + typed lines, or a still message
@@ -91,12 +101,78 @@ export default function Phone() {
         };
     }, [live, session]);
 
+    if (PREVIEW === "ticket") return <TicketPreview />;
+    if (PREVIEW === "lights") return <LightsPreview />;
     if (!live) return <Screen error="scan the qr code on your tv to join." />;
     if (error) return <Screen error={error} />;
     return (
         <>
             <PhoneStage live={live} joined={joined} homes={homes} seat={seat} tickets={tickets} />
         </>
+    );
+}
+
+/**
+ * /phone?preview=lights&t=95: the song's lights on this phone alone, on its own clock from
+ * ?t= (no TV, no video, no sound). Same cue sheet and engine as the show. Tap to pause.
+ */
+function LightsPreview() {
+    const start = Math.max(0, Number(new URLSearchParams(location.search).get("t")) || 95);
+    const cues = useRef<Cue[] | null>(null);
+    const [shown, setShown] = useState({ t: start, colour: "#000000", scene: "—" as Scene | "—" });
+    const paused = useRef(false);
+
+    useEffect(() => {
+        loadCues(CUES_URL).then((c) => (cues.current = c));
+        let raf = 0;
+        let t = start;
+        let last = performance.now();
+        const loop = (now: number) => {
+            if (!paused.current) t += (now - last) / 1000;
+            last = now;
+            if (cues.current) {
+                const s = stateAt(cues.current, t, { flashDelay: 0 });
+                setShown({ t, colour: s.colour, scene: s.scene });
+            }
+            raf = requestAnimationFrame(loop);
+        };
+        raf = requestAnimationFrame(loop);
+        return () => cancelAnimationFrame(raf);
+    }, [start]);
+
+    return (
+        <div className="phone" onPointerUp={() => (paused.current = !paused.current)}>
+            <div className="phone-light" style={{ background: shown.colour }} />
+            <div className="debug-overlay">
+                t {shown.t.toFixed(1)}s · {shown.scene}
+                <br />
+                <span className="colour-swatch" style={{ background: shown.colour }} /> {shown.colour}
+                <br />
+                tap to pause / play
+            </div>
+        </div>
+    );
+}
+
+/**
+ * /phone?preview=ticket: the end of the show over a blue stage light, with a made-up seat.
+ * A tap first: phones only play the voice after one (in the real show it's the join tap).
+ */
+function TicketPreview() {
+    const [go, setGo] = useState(false);
+    if (!go) {
+        return (
+            <div className="phone" onPointerUp={() => setGo(true)}>
+                <Screen still="tap to preview the ending" />
+            </div>
+        );
+    }
+    return (
+        <div className="phone">
+            {/* the stage light it fades from */}
+            <div className="phone-light" style={{ background: "#2c03fc" }} />
+            <TicketHold enabled seat="L1 · byte 0x2A · bit 3" waveScale={WAVE} />
+        </div>
     );
 }
 
@@ -116,10 +192,26 @@ function PhoneStage({
 }) {
     const { schedule, stage, now, ready } = useSchedule(live, () => {});
     const serverNow = useMemo(() => () => live.clock.serverNow(), [live]);
+    const [torchAsked, setTorchAsked] = useState(false);
+    // Just joined: show the seat bit big, so people can line phones up (bit 0 on the left).
+    const [bitShown, setBitShown] = useState(false);
+    const inWaitingRoom = joined && ready && tickets.total > 0 && stage !== "show" && seat !== undefined;
+    useEffect(() => {
+        if (!inWaitingRoom || bitShown) return;
+        const id = setTimeout(() => setBitShown(true), BIT_SHOW_MS);
+        return () => clearTimeout(id);
+    }, [inWaitingRoom, bitShown]);
 
     // Wait for the real stage and tickets, so a late joiner never flashes the wrong screen.
     if (!joined || !ready || tickets.total === 0) return <Screen lines={["allocating your seat…"]} loop={false} />;
-    if (stage === "show") return <PhoneShow live={live} goAt={schedule.go_at} />;
+    if (stage === "show" || TEST) return <PhoneShow live={live} goAt={schedule.go_at} seat={seat} />;
+    if (inWaitingRoom && !bitShown) {
+        return (
+            <div className="phone">
+                <p className="seat-bit">bit {seat!.bit}</p>
+            </div>
+        );
+    }
     return (
         <div className="phone">
             {/* Same inputs and clock as the TV: the same screen and text at the same moment. */}
@@ -135,6 +227,18 @@ function PhoneStage({
                 qr=""
                 waveScale={WAVE}
             />
+            {/* Android only: the camera prompt has to come from a tap. */}
+            {TORCH_POSSIBLE && !torchAsked && (
+                <button
+                    className="torch-button"
+                    onClick={() => {
+                        setTorchAsked(true);
+                        void enableTorch();
+                    }}
+                >
+                    turn on flashlight effects
+                </button>
+            )}
         </div>
     );
 }
@@ -164,15 +268,21 @@ const sameView = (a: ShowView, b: ShowView) =>
  * frame, then the stage light filling the screen in the cue sheet's colours. Until the
  * time is known it's just the glow, no text.
  */
-function PhoneShow({ live, goAt }: { live: Live; goAt: number | null }) {
+function PhoneShow({ live, goAt, seat }: { live: Live; goAt: number | null; seat?: Seat }) {
+    const bit = seat?.bit;
+    const flashDelay = WAVE_ON && bit !== undefined ? bit * WAVE_STEP : 0; // this phone's place in the wave
     // No position from the TV yet: the video started at its first segment when the show began.
     const videoTimeNow = useVideoClock(live, () =>
         goAt === null ? null : SEGMENTS[0].start + Math.max(0, live.clock.serverNow() - goAt) / 1000,
     );
     const [view, setView] = useState<ShowView>({ kind: "sync" });
+    const [endNear, setEndNear] = useState(false); // video time ≥ TICKET_T
     const [debug, setDebug] = useState<DebugInfo>({ t: "—", scene: "—", offset: 0, colour: "" });
     const motionDebug = useRef<HTMLSpanElement>(null);
-    const motion = useMotionReactions(live, DEBUG ? motionDebug : undefined); // clap / jump / sway / raised
+    const scene = useRef<Scene | "—">("—");
+    // clap (shake) / jump / sway / raised; shakes only count in the "show" scene
+    // Test mode: motion counts any time (the MotionPanel shows each step of a hit).
+    const motion = useMotionReactions(live, () => TEST || scene.current === "show", DEBUG ? motionDebug : undefined);
     const cues = useRef<Cue[] | null>(null);
 
     useEffect(() => {
@@ -184,17 +294,18 @@ function PhoneShow({ live, goAt }: { live: Live; goAt: number | null }) {
         let shown: ShowView = { kind: "sync" };
         let typed = { start: -1, chars: 0 }; // letters already typed in this line (each new one moves the glow)
         let dbg = "";
+        let nearShown = false;
         const beats = beatFollower(); // drum pulses from the cue sheet, on the video's clock
 
         const loop = () => {
             const t = videoTimeNow();
             let next: ShowView = { kind: "sync" };
-            let scene: Scene | "—" = "—";
+            let sceneNow: Scene | "—" = "—";
 
             if (cues.current) beats(cues.current, t);
             if (t !== null && cues.current) {
-                const s = stateAt(cues.current, t);
-                scene = s.scene;
+                const s = stateAt(cues.current, t, { flashDelay });
+                sceneNow = s.scene;
                 if (s.scene === "reveal") {
                     // Video-time based (late joiners in sync); 1/50 s steps, frozen once settled.
                     const e = Math.min(REVEAL_SETTLED, Math.max(0, t - s.sceneStart));
@@ -210,6 +321,14 @@ function PhoneShow({ live, goAt }: { live: Live; goAt: number | null }) {
                     }
                 } else next = { kind: "light", colour: s.colour };
             }
+            scene.current = sceneNow;
+            // The end of the show: "hold to keep your ticket". Test mode too (else it covers
+            // everything you're testing); /phone?preview=ticket shows the ending on its own.
+            const near = t !== null && t >= TICKET_T;
+            if (near !== nearShown) {
+                nearShown = near;
+                setEndNear(near);
+            }
 
             if (!sameView(shown, next)) {
                 shown = next;
@@ -217,7 +336,7 @@ function PhoneShow({ live, goAt }: { live: Live; goAt: number | null }) {
             }
             if (DEBUG) {
                 const colour = next.kind === "light" ? next.colour : "";
-                const info = { t: t === null ? "—" : t.toFixed(1), scene, offset: Math.round(live.clock.offset), colour };
+                const info = { t: t === null ? "—" : t.toFixed(1), scene: sceneNow, offset: Math.round(live.clock.offset), colour };
                 const key = `${info.t}|${info.scene}|${info.offset}|${colour}`;
                 if (key !== dbg) {
                     dbg = key;
@@ -228,7 +347,7 @@ function PhoneShow({ live, goAt }: { live: Live; goAt: number | null }) {
         };
         raf = requestAnimationFrame(loop);
         return () => cancelAnimationFrame(raf);
-    }, [live, videoTimeNow]);
+    }, [live, videoTimeNow, flashDelay]);
 
     const overlay = DEBUG && (
         <div className="debug-overlay">
@@ -242,51 +361,65 @@ function PhoneShow({ live, goAt }: { live: Live; goAt: number | null }) {
             <br />
             cues: {cueCounts.hand} hand + {cueCounts.ai} ai
             <br />
+            wave delay: {Math.round(flashDelay * 1000)} ms
+            <br />
             <span ref={motionDebug}>motion: waiting for sensors</span>
         </div>
     );
+    // ?test=1 (without ?debug=1): every step of the drum hit, live (to find where it breaks).
+    const hitMeter = TEST && !DEBUG && <MotionPanel live={live} />;
     // Clap: a 120 ms white flash, replayed by remounting (new key).
     const flashEl = motion.flash > 0 && <div key={motion.flash} className="flash" />;
 
-    if (view.kind === "reveal") {
+    // One TicketHold after the screen, so its state (holding / the ticket) survives screen changes.
+    const screen = (() => {
+        if (view.kind === "reveal") {
+            return (
+                <div className="phone">
+                    <Reveal elapsed={view.elapsed} />
+                    {flashEl}
+                    {overlay}
+                </div>
+            );
+        }
+        if (view.kind === "light") {
+            return (
+                <div className="phone">
+                    <div
+                        className="phone-light"
+                        style={{ background: motion.shakeColour ?? view.colour }}
+                    >
+                        {/* Tilting dims it (--sway); jumping brightens it; held up, it goes white like a flashlight */}
+                        <div className="light-sway" />
+                        <div className={`light-lift ${motion.raised ? "up" : motion.jumping ? "jump" : ""}`} />
+                    </div>
+                    {flashEl}
+                    {overlay}
+                </div>
+            );
+        }
         return (
             <div className="phone">
-                <Reveal elapsed={view.elapsed} />
-                {flashEl}
-                {overlay}
-            </div>
-        );
-    }
-    if (view.kind === "light") {
-        return (
-            <div className="phone">
-                <div
-                    className="phone-light"
-                    style={{ background: view.colour }}
-                >
-                    {/* Tilting dims it (--sway); jumping brightens it; held up, it goes white like a flashlight */}
-                    <div className="light-sway" />
-                    <div className={`light-lift ${motion.raised ? "up" : motion.jumping ? "jump" : ""}`} />
+                <div className="preshow centred">
+                    <GlowFrame waveScale={WAVE} />
+                    <div className="preshow-left">
+                        {view.kind === "intro" && (
+                            <p className="intro-text typewriter" aria-label={view.text}>
+                                {view.text}
+                            </p>
+                        )}
+                    </div>
                 </div>
                 {flashEl}
                 {overlay}
             </div>
         );
-    }
+    })();
     return (
-        <div className="phone">
-            <div className="preshow centred">
-                <GlowFrame waveScale={WAVE} />
-                <div className="preshow-left">
-                    {view.kind === "intro" && (
-                        <p className="intro-text typewriter" aria-label={view.text}>
-                            {view.text}
-                        </p>
-                    )}
-                </div>
-            </div>
-            {flashEl}
-            {overlay}
-        </div>
+        <>
+            {screen}
+            {hitMeter}
+            <TicketHold enabled={endNear} seat={seat && fmtSeat(seat)} waveScale={WAVE} />
+        </>
     );
 }

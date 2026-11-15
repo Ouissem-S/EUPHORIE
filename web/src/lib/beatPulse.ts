@@ -38,3 +38,30 @@ export function beatFollower() {
         prev = t;
     };
 }
+
+// ---- Phone as a drum (TV): each phone hit raises --hit on <html>, which decays in ~400 ms ----
+let hitLevel = 0;
+let hitRaf = 0;
+let hitAt = 0;
+const HIT_DECAY_MS = 130; // e-folding time: ~5% left after 400 ms
+
+/** Bring the level down to what it is at `now`. */
+function settle(now: number) {
+    hitLevel *= Math.exp(-(now - hitAt) / HIT_DECAY_MS);
+    hitAt = now;
+    if (hitLevel < 0.01) hitLevel = 0;
+}
+
+function hitDecay(now: number) {
+    settle(now);
+    hitRaf = hitLevel > 0 ? requestAnimationFrame(hitDecay) : 0;
+    root().setProperty("--hit", hitLevel.toFixed(3));
+}
+
+/** A phone hit (0–1). Hits stack (a crowd hitting together blazes), capped at 1. */
+export function pulseHit(strength: number) {
+    settle(performance.now()); // decay since the last frame first, then add
+    hitLevel = Math.min(1, hitLevel + Math.max(0, Math.min(1, strength)));
+    root().setProperty("--hit", hitLevel.toFixed(3));
+    if (!hitRaf) hitRaf = requestAnimationFrame(hitDecay); // one loop, however many hits
+}

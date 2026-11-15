@@ -69,6 +69,11 @@ export class Live {
         }
     }
 
+    /** Is the socket connected right now? (test panel) */
+    get open() {
+        return this.ws?.readyState === WebSocket.OPEN;
+    }
+
     send(msg: Msg) {
         const s = JSON.stringify(msg);
         if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(s);

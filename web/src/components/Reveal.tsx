@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-const APPEAR = 1.0; // s of pure black before the name snaps on
+const APPEAR = 0.37; // s of black (a quick blackout flash) before the logo snaps on
 
 /**
  * The band's name out of the dark: an instant blackout, then the name cuts in at full

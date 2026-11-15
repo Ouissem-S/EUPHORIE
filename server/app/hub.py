@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import random
 import time
@@ -19,8 +20,11 @@ from datetime import datetime
 from fastapi import WebSocket
 
 from . import analyse, voice
+from .show_config import SHOW_START_VIDEO_S, SKIP_FROM, SKIP_TO
 from .bookings import get_booking
 from .errors import Close, JoinError, error_msg
+
+log = logging.getLogger("uvicorn.error")  # uvicorn's own logger: shows in the server terminal
 
 # Default show start (server local time); the control page's set_time overrides it.
 DEFAULT_START_HOUR = 20
@@ -116,6 +120,7 @@ class Hub:
         self.starts_at: float | None = None if DEMO_MODE else start.timestamp() * 1000
         self.approved = False
         self.go_at: float | None = None
+        self.skipped = False  # the jump from the end of song 1 to the finale has happened
         # phones held up (ids, all homes), and when the TVs last heard about it
         self.raised: set[str] = set()
         self.raised_sent_at = 0.0
@@ -191,7 +196,7 @@ class Hub:
     async def demo_start(self) -> None:
         """Demo: start the show shortly, as if approved on the control page."""
         self.starts_at = self.go_at = now_ms() + DEMO_COUNTDOWN_MS
-        self.approved = True
+        self.approved, self.skipped = True, False
         await self.broadcast_all(self.schedule())
 
     async def join_control(self, ws: WebSocket) -> Client:
@@ -223,6 +228,7 @@ class Hub:
         # Demo: everyone's phone is gone, so get ready for the next run.
         if DEMO_MODE and client.role == "phone" and self.phone_count() == 0 and self.go_at is not None:
             self.approved, self.go_at, self.starts_at = False, None, None
+            self.skipped = False
             await self.broadcast_all(self.schedule())
 
     def free_byte(self) -> int:
@@ -280,6 +286,15 @@ class Hub:
             if g in GESTURES:
                 home.pending[g] += 1
                 home.totals[g] += 1
+            elif g == "hit":
+                # Phone as a drum: straight to this home's TV (no batching), so the bars flash on the hit.
+                try:
+                    strength = max(0.0, min(1.0, float(msg.get("strength", 1))))
+                except (TypeError, ValueError):
+                    strength = 1.0
+                await self.broadcast_home(home, {"type": "hit", "strength": strength}, role="tv")
+                tvs = sum(1 for c in home.clients if c.role == "tv")
+                log.info("hit relayed: home %s, phone %s, strength %.2f, to %d TV(s)", home.id, client.id, strength, tvs)
 
         elif kind == "vote" and client.role == "phone" and self.vote_open:
             self.votes.add(client.id)
@@ -315,15 +330,16 @@ class Hub:
 
         if kind == "set_time":
             self.starts_at = float(msg["starts_at"])
-            self.approved, self.go_at = False, None
+            self.approved, self.go_at, self.skipped = False, None, False
 
         elif kind == "approve":
             self.approved = True
             # Never start before the published time; always give a 10 s final countdown.
             self.go_at = max(self.starts_at or 0, now_ms() + FINAL_COUNTDOWN_MS)
+            self.skipped = False
 
         elif kind == "reset":
-            self.approved, self.go_at = False, None
+            self.approved, self.go_at, self.skipped = False, None, False
             if DEMO_MODE:
                 self.starts_at = None  # back to the join screen until the tickets are in again
             for home in self.homes.values():
@@ -420,11 +436,39 @@ class Hub:
                 await self.crowd_tick()
             except Exception:  # never let the ticker die mid-show
                 pass
+            try:
+                await self.skip_tick()
+            except Exception:
+                pass
+
+    # ---------- automatic jump: end of song 1 → finale ----------
+
+    def live_video_pos(self) -> float | None:
+        """Where the show's video is now, worked out from go_at (None before the show)."""
+        if self.go_at is None or now_ms() < self.go_at:
+            return None
+        return SHOW_START_VIDEO_S + (now_ms() - self.go_at) / 1000
+
+    async def skip_tick(self) -> None:
+        """At the end of song 1, move go_at so the live position is the finale, and tell everyone."""
+        pos = self.live_video_pos()
+        if self.skipped or pos is None or pos < SKIP_FROM:
+            return
+        self.go_at = now_ms() - (SKIP_TO - SHOW_START_VIDEO_S) * 1000
+        self.skipped = True
+        await self.broadcast_all(self.schedule())
 
     # ---------- state messages ----------
 
     def schedule(self) -> dict:
-        return {"type": "schedule", "starts_at": self.starts_at, "approved": self.approved, "go_at": self.go_at}
+        return {
+            "type": "schedule",
+            "starts_at": self.starts_at,
+            "approved": self.approved,
+            "go_at": self.go_at,
+            "skipped": self.skipped,
+            "skip": {"from": SKIP_FROM, "to": SKIP_TO, "show_start": SHOW_START_VIDEO_S},
+        }
 
     def presence(self) -> dict:
         homes = sum(1 for h in self.homes.values() if h.clients)

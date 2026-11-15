@@ -5,12 +5,15 @@ import { Live } from "../lib/live";
 import type { Msg } from "../lib/live";
 import { PLAYING } from "../lib/youtube";
 import { cueCounts } from "../lib/cues";
+import { pulseHit } from "../lib/beatPulse";
 import { useSchedule, type Stage } from "../hooks/useSchedule";
 import { usePlayer } from "../hooks/usePlayer";
 import { useStageLight } from "../hooks/useStageLight";
 import { useFullscreenKey } from "../hooks/useFullscreenKey";
 import { useHostLine } from "../hooks/useHostLine";
+import { useFinaleSkip } from "../hooks/useFinaleSkip";
 import Preshow from "../components/Preshow";
+import GlowFrame from "../components/GlowFrame";
 import { enableVoiceGlow } from "../lib/voice";
 // The TV's glow reacts to the spoken script (phones skip this: too heavy for them).
 enableVoiceGlow();
@@ -42,7 +45,10 @@ function homeIdFromUrl() {
     if (q) return q.toUpperCase();
     const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     const id = Array.from({ length: 4 }, () => letters[Math.floor(Math.random() * letters.length)]).join("");
-    history.replaceState(null, "", `/tv?home=${id}`);
+    // Keep the other parameters (test=1, t=…, debug=1), so a reload stays in the same mode.
+    const params = new URLSearchParams(location.search);
+    params.set("home", id);
+    history.replaceState(null, "", `/tv?${params}`);
     return id;
 }
 
@@ -67,7 +73,8 @@ export default function Tv() {
             .catch(() => {});
     }, [local]);
     const origin = local ? `${location.protocol}//${lanIp}:${location.port}` : location.origin;
-    const joinUrl = `${origin}/phone?home=${home}`;
+    // Test mode: the phones join in test mode too, so they follow this TV without a schedule.
+    const joinUrl = `${origin}/phone?home=${home}${TEST ? "&test=1" : ""}`;
 
     const playerEl = useRef<HTMLDivElement>(null);
     const player = usePlayer(playerEl, live);
@@ -84,11 +91,14 @@ export default function Tv() {
     // Test mode: always the show (no pre-show, waiting room, countdown or QR).
     const stage: Stage = TEST ? "show" : scheduledStage;
     useStageLight(stage, player); // light edges: cue-sheet colours and drum pulses
+    // End of song 1 → finale, automatically (the server moves go_at; test mode jumps locally).
+    const finale = useFinaleSkip(player, schedule, serverNow, TEST);
 
     const [qr, setQr] = useState("");
     const [presence, setPresence] = useState({ homes: 0, phones: 0 });
     const [tickets, setTickets] = useState(NO_TICKETS); // this home's byte and its bits
     const [lightsUp, setLightsUp] = useState(0); // phones held up like lighters, all homes
+    const [hitsSeen, setHitsSeen] = useState(0); // phone drum hits received (shown in test mode)
     const fullscreen = useFullscreenKey();
     const host = useHostLine(live); // lines spoken from the control page
 
@@ -120,6 +130,10 @@ export default function Tv() {
             if (m.type === "presence") setPresence({ homes: m.homes, phones: m.phones });
             if (m.type === "home_presence") setTickets(ticketsFrom(m));
             if (m.type === "raised_count") setLightsUp(Number(m.up) || 0);
+            if (m.type === "hit") {
+                pulseHit(Number(m.strength) || 0); // phone as a drum: the bars flash
+                setHitsSeen((n) => n + 1);
+            }
         });
         return () => void off();
     }, [live]);
@@ -176,7 +190,9 @@ export default function Tv() {
             )}
             <div className="tv-center">
                 <div className="video-frame">
-                    <div ref={playerEl} />
+                    <div className="video-cover">
+                        <div ref={playerEl} />
+                    </div>
                     {!VIDEO_ID && <div className="video-missing">Set VIDEO_ID in src/config.ts</div>}
                 </div>
                 {/* Wait for the server's schedule, so a TV opened mid-show doesn't flash the pre-show */}
@@ -214,12 +230,48 @@ export default function Tv() {
                     {lightsUp} {lightsUp === 1 ? "light" : "lights"} in the air
                 </div>
             )}
-            {TEST && <div className="test-badge">TEST MODE · from {TEST_START_S}s</div>}
+            {finale.overlay && (
+                <div className="skip-overlay preshow centred">
+                    <GlowFrame />
+                    <div className="preshow-left skip-content">
+                        <p className="skip-caption">song 1 · · · finale</p>
+                        <p className="intro-text skip-title">
+                            fast forwarding to the finale
+                            <span className="skip-dots" aria-hidden>
+                                <span>.</span>
+                                <span>.</span>
+                                <span>.</span>
+                            </span>
+                        </p>
+                        <div className="skip-track" aria-hidden>
+                            <div className="skip-fill" />
+                        </div>
+                    </div>
+                </div>
+            )}
+            {TEST && <div className="test-badge">TEST MODE · from {TEST_START_S}s · hits received: {hitsSeen}</div>}
+            {/* Test mode has no pre-show, so the QR is here: scan it to join a phone in test mode */}
+            {TEST && qr && (
+                <div className="test-qr">
+                    <img src={qr} alt="Scan to join (test mode)" />
+                    <span>scan · phone test mode</span>
+                </div>
+            )}
             {DEBUG && (
                 <div className="debug-overlay">
                     <span className="beat-dot" /> t <span ref={videoTime}>—</span>s
                     <br />
                     <span ref={cueSource}>cues: —</span>
+                    <br />
+                    {schedule.skip
+                        ? `skip at ${schedule.skip.from} → ${schedule.skip.to} (${finale.done ? "done" : "pending"})`
+                        : "skip: waiting for the server"}
+                    {schedule.skip && schedule.skip.show_start !== SEGMENTS[0].start && (
+                        <>
+                            <br />
+                            {`⚠ server show start ${schedule.skip.show_start} ≠ SEGMENTS[0].start ${SEGMENTS[0].start}`}
+                        </>
+                    )}
                 </div>
             )}
         </div>

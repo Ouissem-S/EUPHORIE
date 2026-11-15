@@ -1,6 +1,11 @@
 [
-  { "t": 97.0, "colour": "#0033ff", "effect": "pulse", "bpm": 105 },
-  { "t": 104.5, "colour": "#7b00ff", "effect": "cut" },
+  { "t": 106.0, "colour": "#2c03fc", "effect": "cut" },
+  { "t": 106.25, "colour": "#05001a", "effect": "fade", "dur": 0.3 },
+  { "t": 108.0, "colour": "#2c03fc", "effect": "cut" },
+  { "t": 108.25, "colour": "#05001a", "effect": "fade", "dur": 0.3 },
+  { "t": 109.5, "colour": "#fc034e", "effect": "cut" },
+  { "t": 110.0, "colour": "#2c03fc", "effect": "cut" },
+  { "t": 110.25, "colour": "#05001a", "effect": "fade", "dur": 0.3 },
   { "t": 112.0, "colour": "#0011cc", "effect": "fade", "dur": 1.2 },
   { "t": 119.5, "colour": "#00bbff", "effect": "pulse", "bpm": 105 },
   { "t": 127.0, "colour": "#5500aa", "effect": "fade", "dur": 1.0 },

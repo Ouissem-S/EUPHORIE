@@ -15,6 +15,9 @@ export const SHOW = {
 };
 
 export const COUNTDOWN_MS = 10_000;
+
+// Video seconds: from here the phones show "Hold your screen to keep your ticket" (TODO: set exact).
+export const TICKET_T = 5130;
 export const CUES_URL = "/cues/show.json";
 
 export function wsUrl(home: string, role: "tv" | "phone", pid?: string) {
