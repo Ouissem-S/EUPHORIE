@@ -9,6 +9,8 @@ trap "kill 0" EXIT
 (
   cd "$ROOT/server"
   source .venv/bin/activate
+  # ElevenLabs host voice: read from server/.env (exported shell vars also pass through).
+  # Don't set them to "" here: load_dotenv won't override an existing (even empty) var.
   EUPHORIE_KEY="${EUPHORIE_KEY:-pick-a-secret}" uvicorn app.main:app --reload --reload-dir app --port 8000
 ) &
 

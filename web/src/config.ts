@@ -17,9 +17,10 @@ export const SHOW = {
 export const COUNTDOWN_MS = 10_000;
 export const CUES_URL = "/cues/show.json";
 
-export function wsUrl(home: string, role: "tv" | "phone") {
+export function wsUrl(home: string, role: "tv" | "phone", pid?: string) {
     const proto = location.protocol === "https:" ? "wss" : "ws";
-    return `${proto}://${location.host}/ws/${home}?role=${role}`;
+    const id = pid ? `&pid=${encodeURIComponent(pid)}` : "";
+    return `${proto}://${location.host}/ws/${home}?role=${role}${id}`;
 }
 
 export function segmentAt(t: number) {

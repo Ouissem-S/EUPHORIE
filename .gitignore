@@ -6,3 +6,6 @@ __pycache__/
 .env
 .DS_Store
 web/tsconfig.tsbuildinfo
+server/tts_cache/
+server/app/voice_cache/
+server/app/analysis_raw.json

@@ -4,11 +4,20 @@ import { Clock } from "./clock";
 export type Msg = { type: string;[k: string]: any };
 type Handler = (msg: Msg) => void;
 
+/**
+ * Messages that describe the current state (not one-off events). The newest of each is kept
+ * and replayed to handlers added later: the server sends welcome / tickets / schedule once,
+ * right after connecting, often before React has attached its handlers (always on iPhone),
+ * and a missed one left the phone on "allocating your seat…" for good.
+ */
+const STATE_TYPES = new Set(["welcome", "schedule", "presence", "home_presence", "vote_state", "position", "raised_count", "closed"]);
+
 /** WebSocket connection with auto-reconnect and built-in clock sync. */
 export class Live {
     readonly clock = new Clock();
     private ws?: WebSocket;
     private handlers = new Set<Handler>();
+    private latest = new Map<string, Msg>(); // newest message of each STATE_TYPES type
     private queue: string[] = [];
     private closed = false;
     private resync: number;
@@ -34,12 +43,16 @@ export class Live {
                 return;
             }
             if (msg.type === "pong") this.clock.sample(msg.t0, msg.ts);
-            this.handlers.forEach((h) => h(msg));
+            this.emit(msg);
         };
         ws.onclose = (e) => {
-            // 4409: replaced by another screen; 4401: wrong key. Reconnecting would just
-            // kick the other screen back out (endless ping-pong) or retry a bad key forever.
-            if (e.code === 4409 || e.code === 4401) this.closed = true;
+            // 4409: replaced by another screen; 4401: wrong key; 4404: no TV for this home;
+            // 4400: bad home code. Reconnecting would ping-pong or retry a dead end forever.
+            const fatal = [4400, 4401, 4404, 4409].includes(e.code);
+            if (fatal && !this.closed) {
+                this.closed = true;
+                this.emit({ type: "closed", code: e.code, reason: e.reason });
+            }
             if (!this.closed) setTimeout(() => this.connect(), 1000);
         };
     }
@@ -64,8 +77,15 @@ export class Live {
         else if (msg.type !== "position" && this.queue.length < 100) this.queue.push(s);
     }
 
+    private emit(msg: Msg) {
+        if (STATE_TYPES.has(msg.type)) this.latest.set(msg.type, msg);
+        this.handlers.forEach((h) => h(msg));
+    }
+
+    /** Listen for messages; first catches up on the current state received so far. */
     on(h: Handler) {
         this.handlers.add(h);
+        this.latest.forEach((m) => h(m));
         return () => this.handlers.delete(h);
     }
 

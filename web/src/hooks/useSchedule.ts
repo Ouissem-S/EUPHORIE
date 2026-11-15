@@ -23,6 +23,10 @@ export function useSchedule(live: Live, onStageChange: (prev: Stage, next: Stage
     const [stage, setStage] = useState<Stage>("holding");
     const [now, setNow] = useState(0);
     const stageRef = useRef<Stage>("holding");
+    // True once the server's schedule has arrived and the stage was worked out from it,
+    // so a late joiner can wait for the real stage instead of flashing a wrong screen.
+    const [ready, setReady] = useState(false);
+    const received = useRef(false);
 
     // Latest callback in a ref, so a new closure each render doesn't restart the interval.
     const onChange = useRef(onStageChange);
@@ -30,24 +34,30 @@ export function useSchedule(live: Live, onStageChange: (prev: Stage, next: Stage
 
     useEffect(() => {
         const off = live.on((m: Msg) => {
-            if (m.type === "schedule") setSchedule({ starts_at: m.starts_at, approved: m.approved, go_at: m.go_at });
+            if (m.type === "schedule") {
+                received.current = true;
+                setSchedule({ starts_at: m.starts_at, approved: m.approved, go_at: m.go_at });
+            }
         });
         return () => void off();
     }, [live]);
 
     useEffect(() => {
-        const id = setInterval(() => {
+        const tick = () => {
             const t = live.clock.serverNow();
             setNow(t);
             const next = stageFor(schedule, t);
             const prev = stageRef.current;
+            if (received.current) setReady(true);
             if (next === prev) return;
             stageRef.current = next;
             setStage(next);
             onChange.current(prev, next);
-        }, 100);
+        };
+        tick(); // straight away on a new schedule, not 100 ms later
+        const id = setInterval(tick, 100);
         return () => clearInterval(id);
     }, [schedule, live]);
 
-    return { schedule, stage, now };
+    return { schedule, stage, now, ready };
 }

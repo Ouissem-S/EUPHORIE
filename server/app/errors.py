@@ -9,6 +9,7 @@ class Close(IntEnum):
     BAD_REQUEST = 4400
     UNAUTHORISED = 4401
     HOME_NOT_FOUND = 4404
+    FULL = 4403
     CONFLICT = 4409
     SERVER_ERROR = 1011
 
@@ -17,6 +18,7 @@ MESSAGES = {
     Close.BAD_REQUEST: "Invalid home code or role.",
     Close.UNAUTHORISED: "Wrong control key.",
     Close.HOME_NOT_FOUND: "No TV is running for this home.",
+    Close.FULL: "All tickets for this home are in use.",
     Close.CONFLICT: "This home was opened on another screen.",
     Close.SERVER_ERROR: "Server error.",
 }
